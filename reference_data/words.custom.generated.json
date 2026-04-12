@@ -1,0 +1,125 @@
+[
+  {
+    "id": "1ccb211f-2af8-47ed-86d1-e722c2961d76",
+    "name": "customList1",
+    "words": [
+      {
+        "word": "famous",
+        "level": "1",
+        "grade_band": "K-3",
+        "difficulty": "easy",
+        "origin": "Latin",
+        "definition": "Known by many people.",
+        "example_sentence": "The famous singer sang a beautiful song.",
+        "patterns": [],
+        "common_mistakes": [],
+        "coach_tip": "",
+        "part_of_speech": "adjective"
+      },
+      {
+        "word": "molecule",
+        "level": "1",
+        "grade_band": "K-3",
+        "difficulty": "easy",
+        "origin": "Latin",
+        "definition": "A very small part of a substance made of atoms.",
+        "example_sentence": "Water is made of tiny molecules.",
+        "patterns": [],
+        "common_mistakes": [],
+        "coach_tip": "",
+        "part_of_speech": "noun"
+      },
+      {
+        "word": "mind",
+        "level": "1",
+        "grade_band": "K-3",
+        "difficulty": "easy",
+        "origin": "English",
+        "definition": "The part of you that thinks and feels.",
+        "example_sentence": "Use your mind to solve the puzzle.",
+        "patterns": [],
+        "common_mistakes": [],
+        "coach_tip": "",
+        "part_of_speech": "noun"
+      },
+      {
+        "word": "found",
+        "level": "1",
+        "grade_band": "K-3",
+        "difficulty": "easy",
+        "origin": "English",
+        "definition": "To start or create something.",
+        "example_sentence": "They found a new school in the town.",
+        "patterns": [],
+        "common_mistakes": [],
+        "coach_tip": "",
+        "part_of_speech": "verb"
+      },
+      {
+        "word": "boy",
+        "level": "1",
+        "grade_band": "K-3",
+        "difficulty": "easy",
+        "origin": "English",
+        "definition": "A male child.",
+        "example_sentence": "The boy played with his friends.",
+        "patterns": [],
+        "common_mistakes": [],
+        "coach_tip": "",
+        "part_of_speech": "noun"
+      },
+      {
+        "word": "coin",
+        "level": "1",
+        "grade_band": "K-3",
+        "difficulty": "easy",
+        "origin": "Latin",
+        "definition": "A small, flat piece of metal used as money.",
+        "example_sentence": "She found a shiny coin on the ground.",
+        "patterns": [],
+        "common_mistakes": [],
+        "coach_tip": "",
+        "part_of_speech": "noun"
+      },
+      {
+        "word": "ghost",
+        "level": "1",
+        "grade_band": "K-3",
+        "difficulty": "easy",
+        "origin": "English",
+        "definition": "A spirit of a dead person that some people believe in.",
+        "example_sentence": "The story told about a friendly ghost in the house.",
+        "patterns": [],
+        "common_mistakes": [],
+        "coach_tip": "",
+        "part_of_speech": "noun"
+      },
+      {
+        "word": "enough",
+        "level": "1",
+        "grade_band": "K-3",
+        "difficulty": "easy",
+        "origin": "English",
+        "definition": "As much as needed.",
+        "example_sentence": "You have enough toys to share.",
+        "patterns": [],
+        "common_mistakes": [],
+        "coach_tip": "",
+        "part_of_speech": "adverb"
+      },
+      {
+        "word": "knife",
+        "level": "1",
+        "grade_band": "K-3",
+        "difficulty": "easy",
+        "origin": "Old Norse",
+        "definition": "A tool with a sharp blade used for cutting.",
+        "example_sentence": "Be careful when you use a knife.",
+        "patterns": [],
+        "common_mistakes": [],
+        "coach_tip": "",
+        "part_of_speech": "noun"
+      }
+    ]
+  }
+]
