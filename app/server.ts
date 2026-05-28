@@ -62,7 +62,10 @@ function collectBody(request: import("node:http").IncomingMessage): Promise<stri
   });
 }
 
-const server = createServer(async (request, response) => {
+export default async function handler(
+  request: import("node:http").IncomingMessage,
+  response: import("node:http").ServerResponse,
+) {
   if (!request.url || !request.method) {
     sendJson(response, 400, { error: "Invalid request." });
     return;
@@ -232,8 +235,12 @@ const server = createServer(async (request, response) => {
       error: error instanceof Error ? error.message : String(error),
     });
   }
-});
+}
 
-server.listen(PORT, () => {
-  console.log(`Spelling coach API listening on http://localhost:${PORT}`);
-});
+const server = createServer(handler);
+
+if (!process.env.VERCEL) {
+  server.listen(PORT, () => {
+    console.log(`Spelling coach API listening on http://localhost:${PORT}`);
+  });
+}
