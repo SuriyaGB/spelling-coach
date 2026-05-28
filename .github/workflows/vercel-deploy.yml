@@ -43,7 +43,7 @@ jobs:
         id: deploy
         run: |
           # Deploy and capture the deployment URL
-          DEPLOY_URL=$(vercel deploy --prebuilt ${{ github.event.inputs.environment == 'production' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }})
+          DEPLOY_URL=$(vercel deploy --prebuilt ${{ github.event.inputs.environment == 'production' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }} --env OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" --env ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}")
           echo "DEPLOY_URL=$DEPLOY_URL" >> $GITHUB_ENV
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
