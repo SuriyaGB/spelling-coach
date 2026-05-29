@@ -4,15 +4,20 @@ import {
   createDirectSpellingCoachModel,
   type DirectModelLike,
 } from "./directModel.js";
-import { applyBlendPatternsToOutput } from "./blendPatterns.js";
-import { buildSpellingCoachPrompt } from "./prompt.js";
+import { applyBlendPatternsToOutput, getLevelOnePatternNote } from "./blendPatterns.js";
+import { buildLevelOneCoachingPrompt, buildSpellingCoachPrompt } from "./prompt.js";
 import {
+  parseLevelOneCoachingOutput,
   parseSpellingCoachInput,
   parseSpellingCoachOutput,
+  type LevelOneCoachingOutput,
   type SpellingCoachInput,
   type SpellingCoachOutput,
 } from "./schemas.js";
 import type { ZodError } from "zod";
+import { logInfo } from "./logging.js";
+import { getWordByText } from "./wordCatalog.js";
+import { warmWordTeachingPrecompute } from "./optimizedCoach.js";
 
 export type RunSpellingCoachAgentOptions = {
   agent?: DeepAgentLike;
@@ -45,7 +50,7 @@ function logTimings(
     .map((timing) => `${timing.stage}=${formatDuration(timing.durationMs)}`)
     .join(" | ");
 
-  console.log(
+  logInfo(
     `[spelling-coach timing] word="${word}" total=${formatDuration(totalDurationMs)} | ${details}`,
   );
 }
@@ -122,6 +127,86 @@ function formatValidationError(error: unknown): string {
   return String(error);
 }
 
+function isLevelOnePractice(input: SpellingCoachInput): boolean {
+  return getWordByText(input.targetWord)?.level === "1";
+}
+
+function buildLevelOneOutput(
+  input: SpellingCoachInput,
+  coaching: LevelOneCoachingOutput,
+  precomputedChunks: string[],
+): SpellingCoachOutput {
+  const chunks = precomputedChunks.filter(Boolean);
+  const isCorrect = input.missSignals.isCorrect;
+  const patternNote = getLevelOnePatternNote(
+    input.targetWord,
+    input.wordMetadata?.origin,
+  );
+
+  return parseSpellingCoachOutput({
+    correctness: {
+      isCorrect,
+      reinforceSuccess: isCorrect,
+    },
+    missAnalysis: {
+      summary: "",
+      errorTypes: [],
+      primaryErrorFocus: "",
+      likelyWrongWordInterpretation: false,
+      usedMeaningDisambiguationWell: false,
+    },
+    wordTeaching: {
+      formTeaching: {
+        summary: "",
+        patterns: [],
+        chunks: [],
+        chunkReason: "",
+        sayAloudFocus: "",
+      },
+      conceptTeaching: {
+        summary: "",
+        meaningFocus: "",
+        originFocus: "",
+        morphologyFocus: "",
+        originLabels: [],
+        morphologyLabels: [],
+      },
+    },
+    errorRelevance: {
+      mostRelevantToError: "unclear",
+      confidence: 0,
+      reason: "",
+    },
+    teachingDecision: {
+      strategy: "chunking",
+      primaryFocus: "",
+      secondaryFocuses: [],
+      confidence: 0,
+      rationale: "",
+    },
+    coachingText: {
+      shortFeedback: coaching.shortFeedback,
+      fullExplanation: "",
+      memoryTip: "",
+      sayAloudTip: coaching.sayAloudTip,
+    },
+    wordBreakdown: {
+      displayChunks: chunks,
+      chunkReason: patternNote,
+    },
+    conceptLabels: {
+      originLabels: [],
+      patternLabels: [],
+      morphologyLabels: [],
+    },
+    nextStep: {
+      practiceFocus: "",
+      shouldReviewSoon: !isCorrect,
+      suggestedSimilarWordTypes: [],
+    },
+  });
+}
+
 export async function runSpellingCoachAgent(
   input: SpellingCoachInput,
   options: RunSpellingCoachAgentOptions = {},
@@ -151,6 +236,43 @@ export async function runSpellingCoachAgent(
     stage: runtime === "deep_agent" ? "agent_setup" : "direct_model_setup",
     durationMs: nowMs() - agentStart,
   });
+
+  if (isLevelOnePractice(validatedInput)) {
+    const precomputeLookupStart = nowMs();
+    const precomputed = await warmWordTeachingPrecompute(validatedInput, {
+      agent: options.agent,
+      directModel: options.directModel,
+      model: options.model,
+      runtime,
+    });
+    timings.push({
+      stage: "level1_word_breakdown_lookup",
+      durationMs: nowMs() - precomputeLookupStart,
+    });
+
+    const minimalPromptStart = nowMs();
+    const minimalPrompt = buildLevelOneCoachingPrompt(validatedInput);
+    timings.push({
+      stage: "level1_prompt_build",
+      durationMs: nowMs() - minimalPromptStart,
+    });
+
+    const minimalOutput = await invokeLevelOneCoaching(
+      validatedInput,
+      minimalPrompt,
+      precomputed.wordBreakdown.displayChunks,
+      agent,
+      runtime,
+      timings,
+      options.maxValidationRetries ?? 1,
+    );
+
+    if (enableTimingLogs) {
+      logTimings(validatedInput.targetWord, timings, nowMs() - totalStart);
+    }
+
+    return minimalOutput;
+  }
 
   const maxValidationRetries = options.maxValidationRetries ?? 1;
   const promptStart = nowMs();
@@ -256,4 +378,96 @@ export async function runSpellingCoachAgent(
   throw lastError instanceof Error
     ? lastError
     : new Error("Agent output failed validation.");
+}
+
+async function invokeLevelOneCoaching(
+  input: SpellingCoachInput,
+  prompt: string,
+  precomputedChunks: string[],
+  agent: DeepAgentLike | DirectModelLike,
+  runtime: "deep_agent" | "direct",
+  timings: TimingEntry[],
+  maxValidationRetries: number,
+): Promise<SpellingCoachOutput> {
+  const messages = [
+    {
+      role: "user" as const,
+      content: prompt,
+    },
+  ];
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxValidationRetries; attempt += 1) {
+    const invokeStart = nowMs();
+    const response =
+      runtime === "deep_agent"
+        ? await (agent as DeepAgentLike).invoke({ messages })
+        : await (agent as DirectModelLike).invoke([
+            {
+              role: "system",
+              content: buildDirectRuntimeSystemPrompt(),
+            },
+            ...messages,
+          ]);
+    timings.push({
+      stage: `level1_model_invoke_${attempt + 1}`,
+      durationMs: nowMs() - invokeStart,
+    });
+
+    const extractStart = nowMs();
+    const payload = extractAssistantPayload(response);
+    timings.push({
+      stage: `level1_response_extract_${attempt + 1}`,
+      durationMs: nowMs() - extractStart,
+    });
+
+    const outputValidationStart = nowMs();
+    try {
+      const parsedJson = parseStrictJson(payload);
+      const validatedOutput = buildLevelOneOutput(
+        input,
+        parseLevelOneCoachingOutput(parsedJson),
+        precomputedChunks,
+      );
+      timings.push({
+        stage: `level1_output_validation_${attempt + 1}`,
+        durationMs: nowMs() - outputValidationStart,
+      });
+      return validatedOutput;
+    } catch (error) {
+      lastError = error;
+      timings.push({
+        stage: `level1_output_validation_${attempt + 1}`,
+        durationMs: nowMs() - outputValidationStart,
+      });
+
+      if (attempt === maxValidationRetries) {
+        throw error;
+      }
+
+      const repairPromptStart = nowMs();
+      messages.push({
+        role: "assistant" as const,
+        content: payload,
+      });
+      messages.push({
+        role: "user" as const,
+        content: [
+          "Your previous response did not match the required JSON schema.",
+          "Fix it and return one corrected JSON object only.",
+          "Do not add markdown or explanation.",
+          "Validation errors:",
+          formatValidationError(error),
+        ].join("\n\n"),
+      });
+      timings.push({
+        stage: `level1_repair_prompt_${attempt + 1}`,
+        durationMs: nowMs() - repairPromptStart,
+      });
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Level 1 coaching output failed validation.");
 }

@@ -57,6 +57,7 @@ export type GenerateCustomWordMetadataFn = (
 export type ImportCustomWordsOptions = {
   model?: string | object;
   generateMetadata?: GenerateCustomWordMetadataFn;
+  ownerUserId?: string;
 };
 
 function extractTextContent(content: unknown): string {
@@ -248,13 +249,18 @@ export async function importCustomWords(
     throw new Error("At least one custom word is required.");
   }
 
+  const ownerUserId = options.ownerUserId?.trim() ?? "legacy";
   const allLists = loadCustomWordLists();
   const existingList = parsedRequest.listId
-    ? getCustomWordListById(parsedRequest.listId)
+    ? getCustomWordListById(parsedRequest.listId, ownerUserId)
     : allLists.find(
         (list) =>
+          list.owner_user_id === ownerUserId &&
           list.name.trim().toLowerCase() === parsedRequest.listName.trim().toLowerCase(),
       );
+  if (parsedRequest.listId && !existingList) {
+    throw new Error(`Unknown custom list: ${parsedRequest.listId}`);
+  }
 
   const currentListWords = existingList?.words ?? [];
   const existingByWord = new Map(
@@ -306,7 +312,7 @@ export async function importCustomWords(
         name: parsedRequest.listName,
         words: mergedWords,
       }
-    : createCustomWordList(parsedRequest.listName, mergedWords);
+    : createCustomWordList(parsedRequest.listName, mergedWords, ownerUserId);
 
   const updatedLists = existingList
     ? allLists.map((list) => (list.id === nextList.id ? nextList : list))

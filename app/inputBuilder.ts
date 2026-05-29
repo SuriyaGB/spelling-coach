@@ -456,6 +456,21 @@ export const LevelQuerySchema = z.object({
     z.enum(["1", "2", "3"]).optional(),
   ),
   customListId: z.string().optional(),
+  foreignOrigin: z.preprocess(
+    (value) => {
+      if (value === null || value === undefined) {
+        return undefined;
+      }
+
+      const normalized = String(value).trim();
+      if (!normalized || normalized === "undefined" || normalized === "null") {
+        return undefined;
+      }
+
+      return normalized;
+    },
+    z.string().optional(),
+  ),
   exclude: z
     .string()
     .optional()
@@ -463,10 +478,10 @@ export const LevelQuerySchema = z.object({
       value ? value.split(",").map((item) => item.trim()).filter(Boolean) : [],
     ),
 }).superRefine((value, context) => {
-  if (!value.level && !value.customListId) {
+  if (!value.level && !value.customListId && !value.foreignOrigin) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Either level or customListId is required.",
+      message: "Either level, customListId, or foreignOrigin is required.",
       path: ["level"],
     });
   }
@@ -475,5 +490,6 @@ export const LevelQuerySchema = z.object({
 export type LevelQuery = {
   level?: SupportedLevel;
   customListId?: string;
+  foreignOrigin?: string;
   exclude?: string[];
 };

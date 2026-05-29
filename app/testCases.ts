@@ -12,6 +12,7 @@ import {
   getMatchedBlendPatterns,
 } from "./blendPatterns.js";
 import { importCustomWords } from "./customWordImport.js";
+import { importForeignOriginWords } from "./foreignOriginImport.js";
 import { applyDeterministicPatternsToPrecompute } from "./deterministicPatterns.js";
 import {
   hasWordTeachingPrecompute,
@@ -34,8 +35,12 @@ import type { DirectModelLike } from "./directModel.js";
 import type { SpellingCoachInput, SpellingCoachOutput } from "./schemas.js";
 import {
   getCustomWordListById,
+  getForeignOriginWordListByOrigin,
   getWordByText,
+  listCustomWordListsForUser,
   loadCustomWordLists,
+  loadForeignOriginWordLists,
+  saveForeignOriginWordLists,
   pickNextWord,
   saveCustomWordLists,
 } from "./wordCatalog.js";
@@ -136,6 +141,20 @@ function isPatternFilterPrompt(content: unknown): boolean {
   );
 }
 
+function isLevelOnePrompt(content: unknown): boolean {
+  return (
+    typeof content === "string" &&
+    content.includes("Analyze this Level 1 spelling attempt for a child around ages 6 to 8.")
+  );
+}
+
+function isLevelOnePrecomputePrompt(content: unknown): boolean {
+  return (
+    typeof content === "string" &&
+    content.includes("This precompute is only for teaching-friendly chunking.")
+  );
+}
+
 function createMockAgent(output: SpellingCoachOutput): DeepAgentLike {
   return {
     async invoke(input?: { messages?: Array<{ content?: unknown }> }) {
@@ -146,6 +165,58 @@ function createMockAgent(output: SpellingCoachOutput): DeepAgentLike {
             {
               role: "assistant",
               content: JSON.stringify({ keptDescriptions: [] }),
+            },
+          ],
+        };
+      }
+
+      if (isLevelOnePrecomputePrompt(lastContent)) {
+        return {
+          messages: [
+            {
+              role: "assistant",
+              content: JSON.stringify({
+                wordTeaching: {
+                  formTeaching: {
+                    summary: "",
+                    patterns: [],
+                    chunks: [],
+                    chunkReason: "",
+                    sayAloudFocus: "",
+                  },
+                  conceptTeaching: {
+                    summary: "",
+                    meaningFocus: "",
+                    originFocus: "",
+                    morphologyFocus: "",
+                    originLabels: [],
+                    morphologyLabels: [],
+                  },
+                },
+                wordBreakdown: {
+                  displayChunks: ["sun", "set"],
+                  chunkReason: "",
+                },
+                conceptLabels: {
+                  originLabels: [],
+                  patternLabels: [],
+                  morphologyLabels: [],
+                },
+              }),
+            },
+          ],
+        };
+      }
+
+      if (isLevelOnePrompt(lastContent)) {
+        return {
+          messages: [
+            {
+              role: "assistant",
+              content: JSON.stringify({
+                shortFeedback: "Nice try.",
+                sayAloudTip: "Say sun-set.",
+              }),
             },
           ],
         };
@@ -180,6 +251,32 @@ function createSequenceMockAgent(outputs: string[]): DeepAgentLike {
         };
       }
 
+      if (isLevelOnePrecomputePrompt(lastContent)) {
+        const content = outputs[Math.min(index, outputs.length - 1)];
+        index += 1;
+        return {
+          messages: [
+            {
+              role: "assistant",
+              content,
+            },
+          ],
+        };
+      }
+
+      if (isLevelOnePrompt(lastContent)) {
+        const content = outputs[Math.min(index, outputs.length - 1)];
+        index += 1;
+        return {
+          messages: [
+            {
+              role: "assistant",
+              content,
+            },
+          ],
+        };
+      }
+
       const content = outputs[Math.min(index, outputs.length - 1)];
       index += 1;
       return {
@@ -204,6 +301,18 @@ function createSequenceMockModel(outputs: string[]): DirectModelLike {
         return JSON.stringify({ keptDescriptions: [] });
       }
 
+      if (isLevelOnePrecomputePrompt(lastContent)) {
+        const content = outputs[Math.min(index, outputs.length - 1)];
+        index += 1;
+        return content;
+      }
+
+      if (isLevelOnePrompt(lastContent)) {
+        const content = outputs[Math.min(index, outputs.length - 1)];
+        index += 1;
+        return content;
+      }
+
       const content = outputs[Math.min(index, outputs.length - 1)];
       index += 1;
       return content;
@@ -217,6 +326,41 @@ function createDirectMockModel(output: unknown): DirectModelLike {
       const lastContent = messages?.at(-1)?.content;
       if (isPatternFilterPrompt(lastContent)) {
         return JSON.stringify({ keptDescriptions: [] });
+      }
+
+      if (isLevelOnePrecomputePrompt(lastContent)) {
+        return JSON.stringify({
+          wordTeaching: {
+            formTeaching: {
+              summary: "",
+              patterns: [],
+              chunks: [],
+              chunkReason: "",
+              sayAloudFocus: "",
+            },
+            conceptTeaching: {
+              summary: "",
+              meaningFocus: "",
+              originFocus: "",
+              morphologyFocus: "",
+              originLabels: [],
+              morphologyLabels: [],
+            },
+          },
+          wordBreakdown: {
+            displayChunks: ["a", "bout"],
+            chunkReason: "",
+          },
+          conceptLabels: {
+            originLabels: [],
+            patternLabels: [],
+            morphologyLabels: [],
+          },
+        });
+      }
+
+      if (isLevelOnePrompt(lastContent)) {
+        return JSON.stringify(output);
       }
 
       return JSON.stringify(output);
@@ -531,6 +675,96 @@ test("reinforces a correct spelling without over-teaching", async () => {
   assert.equal(result.correctness.isCorrect, true);
   assert.equal(result.correctness.reinforceSuccess, true);
   assert.equal(result.missAnalysis.errorTypes.length, 0);
+});
+
+test("uses minimal Level 1 coaching output and clears advanced sections", async () => {
+  const input: SpellingCoachInput = {
+    targetWord: "about",
+    childAttempt: "abot",
+    childProfile: {
+      childId: "c-level1",
+      age: 7,
+      grade: "2",
+      spellingLevel: "developing",
+    },
+    wordMetadata: {
+      definition: "Near or around a place or time.",
+      origin: "Old English",
+      partOfSpeech: "preposition",
+      pronunciation: "uh-BOUT",
+    },
+    missSignals: {
+      isCorrect: false,
+      nearMiss: true,
+      missingLetters: ["u"],
+      extraLetters: [],
+      substitutedLetters: [],
+      transposedLetters: [],
+      repeatedLetterIssue: false,
+      likelyRushed: false,
+      editDistance: 1,
+    },
+    structuralHints: {
+      syllables: ["a", "bout"],
+      likelyChunks: ["a", "bout"],
+      detectedPatterns: [],
+    },
+    sessionContext: {
+      mode: "practice",
+      previousAttemptsOnThisWord: 0,
+      previousMissPatterns: [],
+      recentlyPracticedWords: [],
+    },
+  };
+
+  const result = await runSpellingCoachAgent(input, {
+    directModel: createSequenceMockModel([
+      JSON.stringify({
+        wordTeaching: {
+          formTeaching: {
+            summary: "",
+            patterns: [],
+            chunks: [],
+            chunkReason: "",
+            sayAloudFocus: "",
+          },
+          conceptTeaching: {
+            summary: "",
+            meaningFocus: "",
+            originFocus: "",
+            morphologyFocus: "",
+            originLabels: [],
+            morphologyLabels: [],
+          },
+        },
+        wordBreakdown: {
+          displayChunks: ["ab", "out"],
+          chunkReason: "",
+        },
+        conceptLabels: {
+          originLabels: [],
+          patternLabels: [],
+          morphologyLabels: [],
+        },
+      }),
+      JSON.stringify({
+        shortFeedback: "Nice try.",
+        sayAloudTip: "Say a-bout.",
+      }),
+    ]),
+    runtime: "direct",
+  });
+
+  assert.equal(result.correctness.isCorrect, false);
+  assert.equal(result.coachingText.shortFeedback, "Nice try.");
+  assert.equal(result.coachingText.sayAloudTip, "Say a-bout.");
+  assert.equal(result.coachingText.fullExplanation, "");
+  assert.deepEqual(result.wordBreakdown.displayChunks, ["ab", "out"]);
+  assert.equal(result.wordBreakdown.chunkReason, "Has vowel team ou.");
+  assert.equal(result.wordTeaching.formTeaching.summary, "");
+  assert.equal(result.wordTeaching.conceptTeaching.summary, "");
+  assert.deepEqual(result.conceptLabels.patternLabels, []);
+  assert.deepEqual(result.nextStep.suggestedSimilarWordTypes, []);
 });
 
 test("handles fictitious with missing middle chunk", async () => {
@@ -1490,6 +1724,51 @@ test("word-level precompute prompt includes curated spelling-rule guidance when 
   }
 });
 
+test("word-level precompute prompt separates spelling chunks from concept grouping", () => {
+  const prompt = buildWordTeachingPrecomputePrompt({
+    targetWord: "center",
+    childAttempt: "center",
+    childProfile: baseProfile,
+    wordMetadata: {
+      definition: "the middle point",
+      origin: "Latin",
+      partOfSpeech: "noun",
+      exampleSentence: "Stand in the center of the circle.",
+    },
+    missSignals: {
+      isCorrect: true,
+      nearMiss: false,
+      missingLetters: [],
+      extraLetters: [],
+      substitutedLetters: [],
+      transposedLetters: [],
+      repeatedLetterIssue: false,
+      likelyRushed: false,
+      editDistance: 0,
+    },
+    structuralHints: {
+      syllables: [],
+      likelyChunks: [],
+      detectedPatterns: [],
+    },
+    sessionContext: {
+      mode: "practice",
+      previousAttemptsOnThisWord: 0,
+      previousMissPatterns: [],
+      recentlyPracticedWords: [],
+    },
+  });
+
+  assert.equal(
+    prompt.includes("choose spelling-teaching chunks that are easy to say, easy to remember"),
+    true,
+  );
+  assert.equal(
+    prompt.includes("explain that separately in conceptTeaching instead of forcing wordBreakdown.displayChunks to match it"),
+    true,
+  );
+});
+
 test("warms word teaching precompute on a word-only input", async () => {
   const input = buildWordPrecomputeInput("torsion");
   const precomputeOutput = {
@@ -1963,7 +2242,7 @@ test("imports named custom lists and supports list-scoped practice lookup", asyn
     assert.equal(result.list.name, "Wind Words");
     assert.equal(result.words[0]?.word, "zephyrette");
 
-    const customList = getCustomWordListById(result.list.id);
+    const customList = getCustomWordListById(result.list.id, "legacy");
     assert.ok(customList);
     assert.equal(customList?.words.length, 1);
     assert.equal(customList?.name, "Wind Words");
@@ -1974,7 +2253,7 @@ test("imports named custom lists and supports list-scoped practice lookup", asyn
     assert.equal(importedWord?.origin, "French");
     assert.equal(importedWord?.level, "custom");
 
-    const nextWord = pickNextWord(undefined, [], result.list.id);
+    const nextWord = pickNextWord(undefined, [], result.list.id, undefined, "legacy");
     assert.equal(nextWord.word, "zephyrette");
 
     const publicWord = buildWordResponse(importedWord!);
@@ -1993,6 +2272,7 @@ test("rotates through custom-list words before repeating", () => {
       {
         id: "rotation-list",
         name: "Rotation List",
+        owner_user_id: "legacy",
         words: [
           {
             word: "alpha",
@@ -2038,9 +2318,9 @@ test("rotates through custom-list words before repeating", () => {
     ]);
 
     const picks = [
-      pickNextWord(undefined, [], "rotation-list").word,
-      pickNextWord(undefined, [], "rotation-list").word,
-      pickNextWord(undefined, [], "rotation-list").word,
+      pickNextWord(undefined, [], "rotation-list", undefined, "legacy").word,
+      pickNextWord(undefined, [], "rotation-list", undefined, "legacy").word,
+      pickNextWord(undefined, [], "rotation-list", undefined, "legacy").word,
     ];
 
     assert.equal(new Set(picks).size, 3);
@@ -2078,6 +2358,125 @@ test("reuses built-in metadata for imported words already in the main word bank"
   }
 });
 
+test("scopes custom-list listing and retrieval by owner user id", () => {
+  const originalCustomLists = loadCustomWordLists();
+
+  try {
+    saveCustomWordLists([
+      {
+        id: "list-a",
+        name: "List A",
+        owner_user_id: "user-a",
+        words: [],
+      },
+      {
+        id: "list-b",
+        name: "List B",
+        owner_user_id: "user-b",
+        words: [],
+      },
+    ]);
+
+    const userALists = listCustomWordListsForUser("user-a");
+    assert.equal(userALists.length, 1);
+    assert.equal(userALists[0]?.id, "list-a");
+
+    assert.equal(getCustomWordListById("list-b", "user-a"), undefined);
+    assert.equal(getCustomWordListById("list-b", "user-b")?.name, "List B");
+  } finally {
+    saveCustomWordLists(originalCustomLists);
+  }
+});
+
+test("throws when importing into a listId not owned by caller", async () => {
+  const originalCustomLists = loadCustomWordLists();
+
+  try {
+    saveCustomWordLists([
+      {
+        id: "owned-by-a",
+        name: "Owned A",
+        owner_user_id: "user-a",
+        words: [],
+      },
+    ]);
+
+    await assert.rejects(
+      importCustomWords(
+        {
+          listId: "owned-by-a",
+          listName: "Owned A",
+          words: ["pulpit"],
+        },
+        {
+          ownerUserId: "user-b",
+          generateMetadata: async () => [],
+        },
+      ),
+      /Unknown custom list: owned-by-a/,
+    );
+  } finally {
+    saveCustomWordLists(originalCustomLists);
+  }
+});
+
+test("imports foreign-origin words and supports origin-scoped practice lookup", async () => {
+  const originalForeignOriginLists = loadForeignOriginWordLists();
+
+  try {
+    const result = await importForeignOriginWords(
+      {
+        entries: [
+          { word: "staccato", origin: "Italian" },
+          { word: "tornado", origin: "Spanish" },
+        ],
+        overwriteOrigin: true,
+      },
+      {
+        generateMetadata: async (entries) =>
+          entries.map((entry) => ({
+            word: entry.word,
+            origin: entry.origin,
+            definition: `Definition for ${entry.word}.`,
+            exampleSentence: `${entry.word} appears in the sentence.`,
+            partOfSpeech: "noun",
+          })),
+      },
+    );
+
+    assert.equal(result.importedCount, 2);
+    assert.equal(result.origins.some((origin) => origin.origin === "Italian"), true);
+    assert.equal(result.origins.some((origin) => origin.origin === "Spanish"), true);
+
+    const italianList = getForeignOriginWordListByOrigin("Italian");
+    assert.ok(italianList);
+    assert.equal(italianList?.words.length, 1);
+    assert.equal(italianList?.words[0]?.level, "foreign");
+
+    const spanishList = getForeignOriginWordListByOrigin("Spanish");
+    assert.ok(spanishList);
+    assert.equal(spanishList?.words.length, 1);
+
+    const nextItalianWord = pickNextWord(
+      undefined,
+      [],
+      undefined,
+      "Italian",
+    );
+    assert.equal(nextItalianWord.word.toLowerCase(), "staccato");
+
+    const nextSpanishWord = pickNextWord(
+      undefined,
+      [],
+      undefined,
+      "Spanish",
+    );
+    assert.equal(nextSpanishWord.word.toLowerCase(), "tornado");
+  } finally {
+    saveForeignOriginWordLists(originalForeignOriginLists);
+  }
+});
+
 test("accepts custom-list next-word queries when level is sent as NaN", () => {
   const query = LevelQuerySchema.parse({
     level: "NaN",
@@ -2087,4 +2486,16 @@ test("accepts custom-list next-word queries when level is sent as NaN", () => {
 
   assert.equal(query.level, undefined);
   assert.equal(query.customListId, "list-123");
+});
+
+test("accepts foreign-origin next-word queries without level", () => {
+  const query = LevelQuerySchema.parse({
+    level: undefined,
+    customListId: undefined,
+    foreignOrigin: "Italian",
+    exclude: undefined,
+  });
+
+  assert.equal(query.foreignOrigin, "Italian");
+  assert.equal(query.level, undefined);
 });
