@@ -6,6 +6,7 @@ import {
 } from "./directModel.js";
 import { applyBlendPatternsToPrecompute } from "./blendPatterns.js";
 import {
+  buildLevelOnePrecomputePrompt,
   buildMissOnlyPrompt,
   buildWordTeachingPrecomputePrompt,
 } from "./prompt.js";
@@ -22,6 +23,7 @@ import {
 } from "./schemas.js";
 import type { ZodError } from "zod";
 import { logInfo } from "./logging.js";
+import { getWordByText } from "./wordCatalog.js";
 
 type RuntimeMode = "deep_agent" | "direct";
 
@@ -153,6 +155,10 @@ function formatValidationError(error: unknown): string {
   return String(error);
 }
 
+function isLevelOnePractice(input: SpellingCoachInput): boolean {
+  return getWordByText(input.targetWord)?.level === "1";
+}
+
 async function getRuntimeInvoker(
   options: SharedOptions = {},
 ): Promise<{ runtime: RuntimeMode; invoker: DeepAgentLike | DirectModelLike }> {
@@ -269,7 +275,9 @@ export function warmWordTeachingPrecompute(
   }
 
   const promise = invokeValidatedJson(
-    buildWordTeachingPrecomputePrompt(validatedInput),
+    isLevelOnePractice(validatedInput)
+      ? buildLevelOnePrecomputePrompt(validatedInput)
+      : buildWordTeachingPrecomputePrompt(validatedInput),
     parseWordTeachingPrecompute,
     options,
     undefined,

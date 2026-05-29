@@ -145,17 +145,19 @@ const server = createServer(async (request, response) => {
         query.foreignOrigin,
         user?.id,
       );
-      const precomputeInput = buildWordPrecomputeInput(word.word);
-      const precomputeStart = performance.now();
-      void warmWordTeachingPrecompute(precomputeInput)
-        .then(() => {
-          logInfo(
-            `[spelling-coach precompute timing] word="${word.word}" total=${(performance.now() - precomputeStart).toFixed(1)}ms`,
-          );
-        })
-        .catch((error) => {
-          logError("Word teaching precompute failed:", error);
-        });
+      if (word.level !== "1") {
+        const precomputeInput = buildWordPrecomputeInput(word.word);
+        const precomputeStart = performance.now();
+        void warmWordTeachingPrecompute(precomputeInput)
+          .then(() => {
+            logInfo(
+              `[spelling-coach precompute timing] word="${word.word}" total=${(performance.now() - precomputeStart).toFixed(1)}ms`,
+            );
+          })
+          .catch((error) => {
+            logError("Word teaching precompute failed:", error);
+          });
+      }
       sendJson(response, 200, buildWordResponse(word));
       return;
     }

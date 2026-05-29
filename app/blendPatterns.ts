@@ -245,3 +245,72 @@ export function applyBlendPatternsToOutput(
     },
   };
 }
+
+function toLevelOnePatternNote(label: string): string {
+  if (label.startsWith("vowel team ")) {
+    const pattern = label.replace("vowel team ", "").replace(" -D", "");
+    return `Has vowel team ${pattern}.`;
+  }
+
+  if (label.startsWith("3-letter blend ")) {
+    const pattern = label.replace("3-letter blend ", "").replace(" -D", "");
+    return `Has blend ${pattern}.`;
+  }
+
+  if (label.startsWith("blend ")) {
+    const pattern = label.replace("blend ", "").replace(" -D", "");
+    return `Has blend ${pattern}.`;
+  }
+
+  if (label.startsWith("digraph ")) {
+    const pattern = label.replace("digraph ", "").replace(" -D", "");
+    return `Has digraph ${pattern}.`;
+  }
+
+  if (label.startsWith("r-controlled digraph ")) {
+    const pattern = label
+      .replace("r-controlled digraph ", "")
+      .replace(" -D", "");
+    return `Has pattern ${pattern}.`;
+  }
+
+  if (label.startsWith("w-controlled digraph ")) {
+    const pattern = label
+      .replace("w-controlled digraph ", "")
+      .replace(" -D", "");
+    return `Has pattern ${pattern}.`;
+  }
+
+  if (label.startsWith("l-controlled digraph ")) {
+    const pattern = label
+      .replace("l-controlled digraph ", "")
+      .replace(" -D", "");
+    return `Has pattern ${pattern}.`;
+  }
+
+  if (label.startsWith("silent letter digraph ")) {
+    const pattern = label
+      .replace("silent letter digraph ", "")
+      .replace(" -D", "");
+    return `Has silent letters ${pattern}.`;
+  }
+
+  if (label.startsWith("word ending -")) {
+    const pattern = label.replace("word ending -", "").replace(" -D", "");
+    return `Ends with ${pattern}.`;
+  }
+
+  return "";
+}
+
+export function getLevelOnePatternNote(
+  targetWord: string,
+  origin?: string,
+): string {
+  if (!supportsBlendPatternMatching(origin)) {
+    return "";
+  }
+
+  const firstMatch = getMatchedBlendPatterns(targetWord)[0];
+  return firstMatch ? toLevelOnePatternNote(firstMatch) : "";
+}

@@ -138,6 +138,11 @@ export const DETERMINISTIC_PATTERN_FILTER_SCHEMA_TEXT = `{
   "keptDescriptions": string[]
 }`;
 
+export const LEVEL_ONE_COACHING_SCHEMA_TEXT = `{
+  "shortFeedback": string,
+  "sayAloudTip": string
+}`;
+
 const SPELLING_RULE_PROMPT_GUIDANCE = `
 - Curated spelling-rule hints may be provided from the app's spelling-rules CSV.
 - Use those rule hints as a rule vocabulary and teaching aid, not as a closed or exhaustive list.
@@ -294,6 +299,10 @@ export function buildWordTeachingPrecomputePrompt(
     "Use the exact top-level keys and nested field names. Do not rename sections.",
     "Required top-level keys:",
     ["wordTeaching", "wordBreakdown", "conceptLabels"].join(", "),
+    "For wordBreakdown.displayChunks, choose spelling-teaching chunks that are easy to say, easy to remember, and helpful for spelling this word at the learner's level.",
+    "For wordBreakdown.displayChunks, you may prefer chunks that preserve blends, digraphs, common endings, or other easy spelling parts, even when they are not strict morphology.",
+    "Do not force wordBreakdown.displayChunks to follow roots, prefixes, or suffixes if a simpler spelling-teaching split is better.",
+    "If a different meaningful grouping helps with meaning or morphology, explain that separately in conceptTeaching instead of forcing wordBreakdown.displayChunks to match it.",
     "Use CSV hints as sample affix and morpheme families, not as a closed dictionary.",
     "You should still look for similar prefixes, suffixes, and related word parts in the current word when that helps spelling instruction.",
     "Local reference hints from curated Greek/Latin morpheme CSVs:",
@@ -339,6 +348,25 @@ export function buildWordTeachingPrecomputePrompt(
   return promptParts.join("\n\n");
 }
 
+export function buildLevelOnePrecomputePrompt(
+  input: SpellingCoachInput,
+): string {
+  return [
+    "Analyze this Level 1 word for a child around ages 6 to 8 and return one JSON object only.",
+    "This precompute is only for teaching-friendly chunking.",
+    "Choose wordBreakdown.displayChunks that are easiest to say and easiest to remember for spelling.",
+    "Prefer child-friendly spelling chunks such as blends, digraphs, and common endings when helpful.",
+    "Do not force morphology, origin, roots, prefixes, or suffixes.",
+    "Keep wordTeaching and conceptLabels empty in this Level 1 precompute.",
+    "Required top-level keys:",
+    ["wordTeaching", "wordBreakdown", "conceptLabels"].join(", "),
+    "Required output schema:",
+    WORD_TEACHING_PRECOMPUTE_SCHEMA_TEXT,
+    "Input JSON:",
+    JSON.stringify(input, null, 2),
+  ].join("\n\n");
+}
+
 export function buildDeterministicPatternFilterPrompt(
   targetWord: string,
   candidates: Array<{ pattern: string; description: string }>,
@@ -382,6 +410,25 @@ export function buildMissOnlyPrompt(
     wordTeachingPrecompute,
     "Required output schema:",
     MISS_ONLY_OUTPUT_SCHEMA_TEXT,
+    "Input JSON:",
+    JSON.stringify(input, null, 2),
+  ].join("\n\n");
+}
+
+export function buildLevelOneCoachingPrompt(input: SpellingCoachInput): string {
+  return [
+    "Analyze this Level 1 spelling attempt for a child around ages 6 to 8.",
+    "Return one JSON object only.",
+    "Use warm, simple, child-friendly language.",
+    "Do not use jargon such as morphology, origin, etymology, phoneme, root, suffix, or prefix unless absolutely necessary.",
+    "Keep each text field to one short sentence.",
+    "Keep the feedback very short.",
+    "Do not explain form teaching, concept teaching, origin, morphology, or advanced next steps.",
+    "shortFeedback should be a short praise sentence if correct, or a gentle correction sentence if incorrect.",
+    "sayAloudTip should be one tiny spelling tip the child can say or notice.",
+    "If the word is incorrect, do not repeat the full correct spelling unless it is truly needed inside the tip.",
+    "Required output schema:",
+    LEVEL_ONE_COACHING_SCHEMA_TEXT,
     "Input JSON:",
     JSON.stringify(input, null, 2),
   ].join("\n\n");

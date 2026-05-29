@@ -194,6 +194,13 @@ export const DeterministicPatternFilterOutputSchema = z
   })
   .strict();
 
+export const LevelOneCoachingOutputSchema = z
+  .object({
+    shortFeedback: z.string(),
+    sayAloudTip: z.string(),
+  })
+  .strict();
+
 export const SpellingCoachOutputSchema = z
   .object({
     correctness: CorrectnessSchema,
@@ -215,6 +222,7 @@ export type MissOnlyOutput = z.infer<typeof MissOnlyOutputSchema>;
 export type DeterministicPatternFilterOutput = z.infer<
   typeof DeterministicPatternFilterOutputSchema
 >;
+export type LevelOneCoachingOutput = z.infer<typeof LevelOneCoachingOutputSchema>;
 
 export function parseSpellingCoachInput(input: unknown): SpellingCoachInput {
   return SpellingCoachInputSchema.parse(input);
@@ -238,4 +246,10 @@ export function parseDeterministicPatternFilterOutput(
   output: unknown,
 ): DeterministicPatternFilterOutput {
   return DeterministicPatternFilterOutputSchema.parse(output);
+}
+
+export function parseLevelOneCoachingOutput(
+  output: unknown,
+): LevelOneCoachingOutput {
+  return LevelOneCoachingOutputSchema.parse(output);
 }

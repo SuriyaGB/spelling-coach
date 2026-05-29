@@ -141,6 +141,20 @@ function isPatternFilterPrompt(content: unknown): boolean {
   );
 }
 
+function isLevelOnePrompt(content: unknown): boolean {
+  return (
+    typeof content === "string" &&
+    content.includes("Analyze this Level 1 spelling attempt for a child around ages 6 to 8.")
+  );
+}
+
+function isLevelOnePrecomputePrompt(content: unknown): boolean {
+  return (
+    typeof content === "string" &&
+    content.includes("This precompute is only for teaching-friendly chunking.")
+  );
+}
+
 function createMockAgent(output: SpellingCoachOutput): DeepAgentLike {
   return {
     async invoke(input?: { messages?: Array<{ content?: unknown }> }) {
@@ -151,6 +165,58 @@ function createMockAgent(output: SpellingCoachOutput): DeepAgentLike {
             {
               role: "assistant",
               content: JSON.stringify({ keptDescriptions: [] }),
+            },
+          ],
+        };
+      }
+
+      if (isLevelOnePrecomputePrompt(lastContent)) {
+        return {
+          messages: [
+            {
+              role: "assistant",
+              content: JSON.stringify({
+                wordTeaching: {
+                  formTeaching: {
+                    summary: "",
+                    patterns: [],
+                    chunks: [],
+                    chunkReason: "",
+                    sayAloudFocus: "",
+                  },
+                  conceptTeaching: {
+                    summary: "",
+                    meaningFocus: "",
+                    originFocus: "",
+                    morphologyFocus: "",
+                    originLabels: [],
+                    morphologyLabels: [],
+                  },
+                },
+                wordBreakdown: {
+                  displayChunks: ["sun", "set"],
+                  chunkReason: "",
+                },
+                conceptLabels: {
+                  originLabels: [],
+                  patternLabels: [],
+                  morphologyLabels: [],
+                },
+              }),
+            },
+          ],
+        };
+      }
+
+      if (isLevelOnePrompt(lastContent)) {
+        return {
+          messages: [
+            {
+              role: "assistant",
+              content: JSON.stringify({
+                shortFeedback: "Nice try.",
+                sayAloudTip: "Say sun-set.",
+              }),
             },
           ],
         };
@@ -185,6 +251,32 @@ function createSequenceMockAgent(outputs: string[]): DeepAgentLike {
         };
       }
 
+      if (isLevelOnePrecomputePrompt(lastContent)) {
+        const content = outputs[Math.min(index, outputs.length - 1)];
+        index += 1;
+        return {
+          messages: [
+            {
+              role: "assistant",
+              content,
+            },
+          ],
+        };
+      }
+
+      if (isLevelOnePrompt(lastContent)) {
+        const content = outputs[Math.min(index, outputs.length - 1)];
+        index += 1;
+        return {
+          messages: [
+            {
+              role: "assistant",
+              content,
+            },
+          ],
+        };
+      }
+
       const content = outputs[Math.min(index, outputs.length - 1)];
       index += 1;
       return {
@@ -209,6 +301,18 @@ function createSequenceMockModel(outputs: string[]): DirectModelLike {
         return JSON.stringify({ keptDescriptions: [] });
       }
 
+      if (isLevelOnePrecomputePrompt(lastContent)) {
+        const content = outputs[Math.min(index, outputs.length - 1)];
+        index += 1;
+        return content;
+      }
+
+      if (isLevelOnePrompt(lastContent)) {
+        const content = outputs[Math.min(index, outputs.length - 1)];
+        index += 1;
+        return content;
+      }
+
       const content = outputs[Math.min(index, outputs.length - 1)];
       index += 1;
       return content;
@@ -222,6 +326,41 @@ function createDirectMockModel(output: unknown): DirectModelLike {
       const lastContent = messages?.at(-1)?.content;
       if (isPatternFilterPrompt(lastContent)) {
         return JSON.stringify({ keptDescriptions: [] });
+      }
+
+      if (isLevelOnePrecomputePrompt(lastContent)) {
+        return JSON.stringify({
+          wordTeaching: {
+            formTeaching: {
+              summary: "",
+              patterns: [],
+              chunks: [],
+              chunkReason: "",
+              sayAloudFocus: "",
+            },
+            conceptTeaching: {
+              summary: "",
+              meaningFocus: "",
+              originFocus: "",
+              morphologyFocus: "",
+              originLabels: [],
+              morphologyLabels: [],
+            },
+          },
+          wordBreakdown: {
+            displayChunks: ["a", "bout"],
+            chunkReason: "",
+          },
+          conceptLabels: {
+            originLabels: [],
+            patternLabels: [],
+            morphologyLabels: [],
+          },
+        });
+      }
+
+      if (isLevelOnePrompt(lastContent)) {
+        return JSON.stringify(output);
       }
 
       return JSON.stringify(output);
@@ -536,6 +675,96 @@ test("reinforces a correct spelling without over-teaching", async () => {
   assert.equal(result.correctness.isCorrect, true);
   assert.equal(result.correctness.reinforceSuccess, true);
   assert.equal(result.missAnalysis.errorTypes.length, 0);
+});
+
+test("uses minimal Level 1 coaching output and clears advanced sections", async () => {
+  const input: SpellingCoachInput = {
+    targetWord: "about",
+    childAttempt: "abot",
+    childProfile: {
+      childId: "c-level1",
+      age: 7,
+      grade: "2",
+      spellingLevel: "developing",
+    },
+    wordMetadata: {
+      definition: "Near or around a place or time.",
+      origin: "Old English",
+      partOfSpeech: "preposition",
+      pronunciation: "uh-BOUT",
+    },
+    missSignals: {
+      isCorrect: false,
+      nearMiss: true,
+      missingLetters: ["u"],
+      extraLetters: [],
+      substitutedLetters: [],
+      transposedLetters: [],
+      repeatedLetterIssue: false,
+      likelyRushed: false,
+      editDistance: 1,
+    },
+    structuralHints: {
+      syllables: ["a", "bout"],
+      likelyChunks: ["a", "bout"],
+      detectedPatterns: [],
+    },
+    sessionContext: {
+      mode: "practice",
+      previousAttemptsOnThisWord: 0,
+      previousMissPatterns: [],
+      recentlyPracticedWords: [],
+    },
+  };
+
+  const result = await runSpellingCoachAgent(input, {
+    directModel: createSequenceMockModel([
+      JSON.stringify({
+        wordTeaching: {
+          formTeaching: {
+            summary: "",
+            patterns: [],
+            chunks: [],
+            chunkReason: "",
+            sayAloudFocus: "",
+          },
+          conceptTeaching: {
+            summary: "",
+            meaningFocus: "",
+            originFocus: "",
+            morphologyFocus: "",
+            originLabels: [],
+            morphologyLabels: [],
+          },
+        },
+        wordBreakdown: {
+          displayChunks: ["ab", "out"],
+          chunkReason: "",
+        },
+        conceptLabels: {
+          originLabels: [],
+          patternLabels: [],
+          morphologyLabels: [],
+        },
+      }),
+      JSON.stringify({
+        shortFeedback: "Nice try.",
+        sayAloudTip: "Say a-bout.",
+      }),
+    ]),
+    runtime: "direct",
+  });
+
+  assert.equal(result.correctness.isCorrect, false);
+  assert.equal(result.coachingText.shortFeedback, "Nice try.");
+  assert.equal(result.coachingText.sayAloudTip, "Say a-bout.");
+  assert.equal(result.coachingText.fullExplanation, "");
+  assert.deepEqual(result.wordBreakdown.displayChunks, ["ab", "out"]);
+  assert.equal(result.wordBreakdown.chunkReason, "Has vowel team ou.");
+  assert.equal(result.wordTeaching.formTeaching.summary, "");
+  assert.equal(result.wordTeaching.conceptTeaching.summary, "");
+  assert.deepEqual(result.conceptLabels.patternLabels, []);
+  assert.deepEqual(result.nextStep.suggestedSimilarWordTypes, []);
 });
 
 test("handles fictitious with missing middle chunk", async () => {
@@ -1493,6 +1722,51 @@ test("word-level precompute prompt includes curated spelling-rule guidance when 
       process.env.SPELLING_COACH_RULE_PROMPT_HINTS = originalFlag;
     }
   }
+});
+
+test("word-level precompute prompt separates spelling chunks from concept grouping", () => {
+  const prompt = buildWordTeachingPrecomputePrompt({
+    targetWord: "center",
+    childAttempt: "center",
+    childProfile: baseProfile,
+    wordMetadata: {
+      definition: "the middle point",
+      origin: "Latin",
+      partOfSpeech: "noun",
+      exampleSentence: "Stand in the center of the circle.",
+    },
+    missSignals: {
+      isCorrect: true,
+      nearMiss: false,
+      missingLetters: [],
+      extraLetters: [],
+      substitutedLetters: [],
+      transposedLetters: [],
+      repeatedLetterIssue: false,
+      likelyRushed: false,
+      editDistance: 0,
+    },
+    structuralHints: {
+      syllables: [],
+      likelyChunks: [],
+      detectedPatterns: [],
+    },
+    sessionContext: {
+      mode: "practice",
+      previousAttemptsOnThisWord: 0,
+      previousMissPatterns: [],
+      recentlyPracticedWords: [],
+    },
+  });
+
+  assert.equal(
+    prompt.includes("choose spelling-teaching chunks that are easy to say, easy to remember"),
+    true,
+  );
+  assert.equal(
+    prompt.includes("explain that separately in conceptTeaching instead of forcing wordBreakdown.displayChunks to match it"),
+    true,
+  );
 });
 
 test("warms word teaching precompute on a word-only input", async () => {
