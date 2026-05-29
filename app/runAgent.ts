@@ -13,6 +13,7 @@ import {
   type SpellingCoachOutput,
 } from "./schemas.js";
 import type { ZodError } from "zod";
+import { logInfo } from "./logging.js";
 
 export type RunSpellingCoachAgentOptions = {
   agent?: DeepAgentLike;
@@ -45,7 +46,7 @@ function logTimings(
     .map((timing) => `${timing.stage}=${formatDuration(timing.durationMs)}`)
     .join(" | ");
 
-  console.log(
+  logInfo(
     `[spelling-coach timing] word="${word}" total=${formatDuration(totalDurationMs)} | ${details}`,
   );
 }

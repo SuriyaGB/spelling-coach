@@ -21,6 +21,7 @@ import {
   type WordTeachingPrecompute,
 } from "./schemas.js";
 import type { ZodError } from "zod";
+import { logInfo } from "./logging.js";
 
 type RuntimeMode = "deep_agent" | "direct";
 
@@ -75,7 +76,7 @@ function logTimings(
     .map((timing) => `${timing.stage}=${formatDuration(timing.durationMs)}`)
     .join(" | ");
 
-  console.log(
+  logInfo(
     `[${prefix}] word="${word}" total=${formatDuration(totalDurationMs)} | ${details}`,
   );
 }

@@ -12,6 +12,7 @@ import {
   getMatchedBlendPatterns,
 } from "./blendPatterns.js";
 import { importCustomWords } from "./customWordImport.js";
+import { importForeignOriginWords } from "./foreignOriginImport.js";
 import { applyDeterministicPatternsToPrecompute } from "./deterministicPatterns.js";
 import {
   hasWordTeachingPrecompute,
@@ -34,8 +35,12 @@ import type { DirectModelLike } from "./directModel.js";
 import type { SpellingCoachInput, SpellingCoachOutput } from "./schemas.js";
 import {
   getCustomWordListById,
+  getForeignOriginWordListByOrigin,
   getWordByText,
+  listCustomWordListsForUser,
   loadCustomWordLists,
+  loadForeignOriginWordLists,
+  saveForeignOriginWordLists,
   pickNextWord,
   saveCustomWordLists,
 } from "./wordCatalog.js";
@@ -1963,7 +1968,7 @@ test("imports named custom lists and supports list-scoped practice lookup", asyn
     assert.equal(result.list.name, "Wind Words");
     assert.equal(result.words[0]?.word, "zephyrette");
 
-    const customList = getCustomWordListById(result.list.id);
+    const customList = getCustomWordListById(result.list.id, "legacy");
     assert.ok(customList);
     assert.equal(customList?.words.length, 1);
     assert.equal(customList?.name, "Wind Words");
@@ -1974,7 +1979,7 @@ test("imports named custom lists and supports list-scoped practice lookup", asyn
     assert.equal(importedWord?.origin, "French");
     assert.equal(importedWord?.level, "custom");
 
-    const nextWord = pickNextWord(undefined, [], result.list.id);
+    const nextWord = pickNextWord(undefined, [], result.list.id, undefined, "legacy");
     assert.equal(nextWord.word, "zephyrette");
 
     const publicWord = buildWordResponse(importedWord!);
@@ -1993,6 +1998,7 @@ test("rotates through custom-list words before repeating", () => {
       {
         id: "rotation-list",
         name: "Rotation List",
+        owner_user_id: "legacy",
         words: [
           {
             word: "alpha",
@@ -2038,9 +2044,9 @@ test("rotates through custom-list words before repeating", () => {
     ]);
 
     const picks = [
-      pickNextWord(undefined, [], "rotation-list").word,
-      pickNextWord(undefined, [], "rotation-list").word,
-      pickNextWord(undefined, [], "rotation-list").word,
+      pickNextWord(undefined, [], "rotation-list", undefined, "legacy").word,
+      pickNextWord(undefined, [], "rotation-list", undefined, "legacy").word,
+      pickNextWord(undefined, [], "rotation-list", undefined, "legacy").word,
     ];
 
     assert.equal(new Set(picks).size, 3);
@@ -2078,6 +2084,125 @@ test("reuses built-in metadata for imported words already in the main word bank"
   }
 });
 
+test("scopes custom-list listing and retrieval by owner user id", () => {
+  const originalCustomLists = loadCustomWordLists();
+
+  try {
+    saveCustomWordLists([
+      {
+        id: "list-a",
+        name: "List A",
+        owner_user_id: "user-a",
+        words: [],
+      },
+      {
+        id: "list-b",
+        name: "List B",
+        owner_user_id: "user-b",
+        words: [],
+      },
+    ]);
+
+    const userALists = listCustomWordListsForUser("user-a");
+    assert.equal(userALists.length, 1);
+    assert.equal(userALists[0]?.id, "list-a");
+
+    assert.equal(getCustomWordListById("list-b", "user-a"), undefined);
+    assert.equal(getCustomWordListById("list-b", "user-b")?.name, "List B");
+  } finally {
+    saveCustomWordLists(originalCustomLists);
+  }
+});
+
+test("throws when importing into a listId not owned by caller", async () => {
+  const originalCustomLists = loadCustomWordLists();
+
+  try {
+    saveCustomWordLists([
+      {
+        id: "owned-by-a",
+        name: "Owned A",
+        owner_user_id: "user-a",
+        words: [],
+      },
+    ]);
+
+    await assert.rejects(
+      importCustomWords(
+        {
+          listId: "owned-by-a",
+          listName: "Owned A",
+          words: ["pulpit"],
+        },
+        {
+          ownerUserId: "user-b",
+          generateMetadata: async () => [],
+        },
+      ),
+      /Unknown custom list: owned-by-a/,
+    );
+  } finally {
+    saveCustomWordLists(originalCustomLists);
+  }
+});
+
+test("imports foreign-origin words and supports origin-scoped practice lookup", async () => {
+  const originalForeignOriginLists = loadForeignOriginWordLists();
+
+  try {
+    const result = await importForeignOriginWords(
+      {
+        entries: [
+          { word: "staccato", origin: "Italian" },
+          { word: "tornado", origin: "Spanish" },
+        ],
+        overwriteOrigin: true,
+      },
+      {
+        generateMetadata: async (entries) =>
+          entries.map((entry) => ({
+            word: entry.word,
+            origin: entry.origin,
+            definition: `Definition for ${entry.word}.`,
+            exampleSentence: `${entry.word} appears in the sentence.`,
+            partOfSpeech: "noun",
+          })),
+      },
+    );
+
+    assert.equal(result.importedCount, 2);
+    assert.equal(result.origins.some((origin) => origin.origin === "Italian"), true);
+    assert.equal(result.origins.some((origin) => origin.origin === "Spanish"), true);
+
+    const italianList = getForeignOriginWordListByOrigin("Italian");
+    assert.ok(italianList);
+    assert.equal(italianList?.words.length, 1);
+    assert.equal(italianList?.words[0]?.level, "foreign");
+
+    const spanishList = getForeignOriginWordListByOrigin("Spanish");
+    assert.ok(spanishList);
+    assert.equal(spanishList?.words.length, 1);
+
+    const nextItalianWord = pickNextWord(
+      undefined,
+      [],
+      undefined,
+      "Italian",
+    );
+    assert.equal(nextItalianWord.word.toLowerCase(), "staccato");
+
+    const nextSpanishWord = pickNextWord(
+      undefined,
+      [],
+      undefined,
+      "Spanish",
+    );
+    assert.equal(nextSpanishWord.word.toLowerCase(), "tornado");
+  } finally {
+    saveForeignOriginWordLists(originalForeignOriginLists);
+  }
+});
+
 test("accepts custom-list next-word queries when level is sent as NaN", () => {
   const query = LevelQuerySchema.parse({
     level: "NaN",
@@ -2087,4 +2212,16 @@ test("accepts custom-list next-word queries when level is sent as NaN", () => {
 
   assert.equal(query.level, undefined);
   assert.equal(query.customListId, "list-123");
+});
+
+test("accepts foreign-origin next-word queries without level", () => {
+  const query = LevelQuerySchema.parse({
+    level: undefined,
+    customListId: undefined,
+    foreignOrigin: "Italian",
+    exclude: undefined,
+  });
+
+  assert.equal(query.foreignOrigin, "Italian");
+  assert.equal(query.level, undefined);
 });
