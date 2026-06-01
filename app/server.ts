@@ -1,5 +1,10 @@
+import * as Sentry from "@sentry/node";
 import { createServer } from "node:http";
 import { URL } from "node:url";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+});
 import { authenticateRequest } from "./auth.js";
 import {
   buildSpellingCoachInput,
@@ -331,6 +336,7 @@ export default async function handler(
     sendJson(response, 404, { error: "Not found." });
   } catch (error) {
     logError("Spelling coach API error:", error);
+    Sentry.captureException(error);
     if (isAuthError(error)) {
       const statusCode =
         error instanceof Error &&
