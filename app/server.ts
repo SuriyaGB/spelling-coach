@@ -140,10 +140,6 @@ export default async function handler(
       return;
     }
 
-    if (request.method === "GET" && url.pathname === "/api/debug-sentry") {
-      throw new Error("Triggering a test error in spelling-coach-BE!");
-    }
-
     if (request.method === "GET" && url.pathname === "/api/words/next") {
       const query = LevelQuerySchema.parse({
         level: url.searchParams.get("level"),
