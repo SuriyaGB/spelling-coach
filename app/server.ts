@@ -182,6 +182,17 @@ export default async function handler(
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/subscription/status") {
+      const user = await authenticateRequest(request);
+      sendJson(response, 200, {
+        subscribed: true,
+        currentPeriodEnd: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days from now
+        cancelAtPeriodEnd: false,
+      });
+      return;
+    }
+
+
     if (request.method === "GET" && url.pathname === "/api/foreign-origins") {
       sendJson(response, 200, {
         origins: listForeignOrigins(),
